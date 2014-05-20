@@ -4,8 +4,14 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Hashtable;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 
 public class Proj1 {
 
@@ -17,8 +23,6 @@ public class Proj1 {
 	 * State to observation probabilities 
 	 */
 	private EmissionMatrix  B;
-
-	private Hashtable Best;
 	
 	/**
 	 * 
@@ -56,24 +60,43 @@ public class Proj1 {
 		print2ddoubleDouble("max_val", values);
 		print2dInt2("arg_max", paths);
 
+		// get solutions
 		List<ArrayList<ResultPair>> solutions = new ArrayList<ArrayList<ResultPair>>(A.N * A.N * O.length);
 		tracePaths(O.length, A.N-1, paths, values, new ArrayList<ResultPair>(), solutions);
 		
-		// print solutions
-		for(ArrayList<ResultPair> path : solutions) {
-			double logprob = 0.0;
-			for(ResultPair p : path) {
-				logprob += p.value;
-				System.out.print(p.index + ",");
-			}
-			System.out.println(" " + logprob);
-		}
+		getTop(k, solutions);
 	}
-	private void tracePaths(int row, int col, int[][][] paths, double[][][] values, ArrayList<ResultPair> currentPath, List<ArrayList<ResultPair>> solutons) {
+
+	
+	private Map<String, Double> getTop(int k, List<ArrayList<ResultPair>> solutions) {
+		LinkedHashMap top = new LinkedHashMap<String, Double>();
+		// Create hash map
+		
+
+		// Sort the map
+		Collections.sort(top, new Comparator<Map.Entry<String, Double>>() {
+			public int compare(Map.Entry<String, Double> a, Map.Entry<String, Double> b) {
+				return a.getValue().compareTo(b.getValue());
+			}
+		});
+		Map<String, Double> sortedTop = new LinkedHashMap<String, Double>();
+		for (Map.Entry<String, Double> entry : top) {
+			sortedTop.put(entry.getKey(), entry.getValue());
+		}
+		// Take the top k
+		
+		return sortedTop;
+	}
+	
+	private void tracePaths(int row, int col, int[][][] paths, double[][][] values, 
+			ArrayList<ResultPair> currentPath, List<ArrayList<ResultPair>> solutons) {
 		if (row == 0) {
 			// base case.
-			currentPath.add(new ResultPair(paths[row][col][0], values[row][col][0]));
-			solutons.add(currentPath);
+			if(values[row][col][0] != A.inf) {
+				currentPath.add(new ResultPair(3, values[row][col][0]));
+				Collections.reverse(currentPath);
+				solutons.add(currentPath);
+			}
 		}
 		else {
 			for(int i = 0; i < paths[row][col].length - 1; i++) {
@@ -102,8 +125,6 @@ public class Proj1 {
 			solution.add(paths[row][col]);
 		}
 	}
-	
-
 	
 	/**
 	 * Note: notation taken from [Stamp, 2012]
@@ -144,9 +165,10 @@ public class Proj1 {
 			for(int i = 0; i < A.N; i++) {
 				double[] p = new double[A.N];
 				for(int j = 0; j < A.N; j++) {
-					paths[t][i][j] = getMaxIndex(values[t-1][j]);
+					//paths[t][i][j] = getMaxIndex(values[t-1][j]);
 					//values[t][i][j] = values[t-1][j][paths[t][i][j]] + A.get(j, i) + B.get(i, O[t]);
 					values[t][i][j] = A.get(j, i) + B.get(i, O[t]);
+					paths[t][i][j] = j;
 				}
 			}
 		}
@@ -160,18 +182,8 @@ public class Proj1 {
 		}		
 	}
 	
-	private double[][] getTop(int k, ) {
-		double[][] best_val = new double[A.N][A.N];
-		int[][] best_path = new int[A.N][A.N];
-		int t = max_val.length - 2;
-		int end_i = A.getEndIndex();
-		for(int i = 0; i < A.N; i++) 
-			for(int j = 0; j < A.N; j++) {
-				best_val[i][j] = max_val[t-1][j] + A.get(j, i) + B.get(i, O[t]) + A.get(j, end_i);
-			}
-		
-		print2ddouble("best_val", best_val); // debug
-		return best_val;
+	private void getTop(int k) {
+
 	}
 	
 	/**
