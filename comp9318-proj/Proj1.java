@@ -32,9 +32,8 @@ public class Proj1 {
 	public Proj1(String states_file, String symbol_file, String query_file, int k) throws FileNotFoundException, IOException {
 		A = new TransitionMatrix(states_file);
 		B = new EmissionMatrix(symbol_file, A);
-		Best = new Hashtable();
-		A.show();
-		B.show();
+//		A.show();
+//		B.show();
 		processQueries(query_file, k);
 	}
 		
@@ -49,30 +48,42 @@ public class Proj1 {
 	}
 	
 	private void query(int[] O, int k) {
-		double[][] max_val = new double[O.length + 1][A.N];
-		int[][] arg_max = new int[O.length + 1][A.N];
+		double[][][] values = new double[O.length + 1][A.N][A.N];
+		int[][][] paths = new int[O.length + 1][A.N][A.N];
 		
-//		for (int i = 0; i < A.N; i++)
-//			viterbi_backward(O.length - 1, i, O, max_val, arg_max);
-		viterbi_procedural(O, max_val, arg_max);
+		viterbi_procedural(O, values, paths);
 		
-		// Add in the final transition to the artificial END state
-		int best_last = getMaxIndex(max_val[O.length - 1]);
-		int end_i = A.getEndIndex();
-		arg_max[O.length][end_i] = best_last;
-		max_val[O.length][end_i] = max_val[O.length - 1][best_last] + A.get(best_last, end_i);
-		
-		print2ddouble("max_val", max_val); // debug
-		print2dint("arg_max", arg_max); // debug
+		print2ddoubleDouble("max_val", values);
+		print2dInt2("arg_max", paths);
 
-		List<Integer> solution = new ArrayList<Integer>();
-		solution.add(A.getBeginIndex());
-		//trace(O.length, end_i, arg_max, solution);
-		solution.add(A.getEndIndex());
+		List<ArrayList<ResultPair>> solutions = new ArrayList<ArrayList<ResultPair>>(A.N * A.N * O.length);
+		tracePaths(O.length, A.N-1, paths, values, new ArrayList<ResultPair>(), solutions);
 		
-		//printSolution(solution, max_val[O.length][end_i]);
-		
-		getTop(k, O, max_val, arg_max);
+		// print solutions
+		for(ArrayList<ResultPair> path : solutions) {
+			double logprob = 0.0;
+			for(ResultPair p : path) {
+				logprob += p.value;
+				System.out.print(p.index + ",");
+			}
+			System.out.println(" " + logprob);
+		}
+	}
+	private void tracePaths(int row, int col, int[][][] paths, double[][][] values, ArrayList<ResultPair> currentPath, List<ArrayList<ResultPair>> solutons) {
+		if (row == 0) {
+			// base case.
+			currentPath.add(new ResultPair(paths[row][col][0], values[row][col][0]));
+			solutons.add(currentPath);
+		}
+		else {
+			for(int i = 0; i < paths[row][col].length - 1; i++) {
+				if(values[row][col][i] == A.inf)
+					continue;	// skip if we get a -infinity
+				ArrayList<ResultPair> subpath = (ArrayList<ResultPair>) currentPath.clone();
+				subpath.add(new ResultPair(paths[row][col][i], values[row][col][i]));
+				tracePaths(row - 1, paths[row][col][i], paths, values, subpath, solutons);
+			}
+		}
 	}
 	
 	private void printSolution(List<Integer> solution, double logLikeleyhood) {
@@ -85,12 +96,14 @@ public class Proj1 {
 	/**
 	 * Recursively trace back the though the arg_max using the max_vals to get the solution.
 	 */
-	private void trace(int row, int col, int[][] arg_maxs, List<Integer> solution) {
+	private void trace(int row, int col, int[][] paths, List<Integer> solution) {
 		if (row != 0) {
-			trace(row - 1, arg_maxs[row][col], arg_maxs, solution);
-			solution.add(arg_maxs[row][col]);
+			trace(row - 1, paths[row][col], paths, solution);
+			solution.add(paths[row][col]);
 		}
 	}
+	
+
 	
 	/**
 	 * Note: notation taken from [Stamp, 2012]
@@ -100,6 +113,7 @@ public class Proj1 {
 	 * @param max_val	book keeping for maximum states sequence values.
 	 * @return
 	 */
+	@SuppressWarnings("unused")
 	private double viterbi_recursive(int t, int i, int[] O, double[][] max_val, int[][] arg_max) {
 		if (max_val[t][i] != 0)
 			return max_val[t][i];
@@ -120,25 +134,33 @@ public class Proj1 {
 		return max_val[t][i];	// return best value
 	}
 	
-	private void viterbi_procedural(int[] O, double[][] max_val, int[][] arg_max) {
+	private void viterbi_procedural(int[] O, double[][][] values, int[][][] paths) {
 		// Base case, t = 0
-		for(int  i = 0; i < A.N; i++) {
-			max_val[0][i] = A.get(A.getBeginIndex(), i) + B.get(i, O[0]);
-		}
-		//Hashtable<String, Double> best; // = new Hashtable<String, Double>(A.N * A.N);
+		for(int  i = 0; i < A.N; i++)
+			for(int j = 0; j < A.N; j++)
+				values[0][i][j] = A.get(A.getBeginIndex(), i) + B.get(i, O[0]);
+		
 		for(int t = 1; t < O.length; t++) {
 			for(int i = 0; i < A.N; i++) {
 				double[] p = new double[A.N];
 				for(int j = 0; j < A.N; j++) {
-					p[j] = max_val[t-1][j] + A.get(j, i) + B.get(i, O[t]);
+					paths[t][i][j] = getMaxIndex(values[t-1][j]);
+					//values[t][i][j] = values[t-1][j][paths[t][i][j]] + A.get(j, i) + B.get(i, O[t]);
+					values[t][i][j] = A.get(j, i) + B.get(i, O[t]);
 				}
-				arg_max[t][i] = getMaxIndex(p);
-				max_val[t][i] = p[arg_max[t][i]];
 			}
 		}
+		// Add in the final transition to the artificial END state
+		int end_i = A.getEndIndex();	// index to the END state
+		for (int i = 0; i < A.N; i++) {
+			int best_last_i = getMaxIndex(values[O.length - 1][i]);	// (index of) the best of each set in the last row
+			paths[O.length][end_i][i] = best_last_i;
+			//values[O.length][end_i][i] = values[O.length - 1][i][best_last_i] + A.get(best_last_i, end_i);
+			values[O.length][end_i][i] = A.get(best_last_i, end_i);
+		}		
 	}
 	
-	private double[][] getTop(int k, int[] O, double[][] max_val, int[][] arg_max) {
+	private double[][] getTop(int k, ) {
 		double[][] best_val = new double[A.N][A.N];
 		int[][] best_path = new int[A.N][A.N];
 		int t = max_val.length - 2;
@@ -164,6 +186,10 @@ public class Proj1 {
 			}
 		}
 		return max_i;
+	}
+	
+	private double getMax(double[] in) {
+		return in[getMaxIndex(in)];
 	}
 	
 	/**
@@ -196,9 +222,23 @@ public class Proj1 {
 	private void print2ddouble(String comment, double[][] in) {
 		System.out.println("[" + comment);
 		for(double[] row : in) {
-			System.out.print("[ ");
+			System.out.print("[");
 			for(double col : row) {
 				System.out.format(" %.6f ", col);
+			}
+			System.out.println("]");
+		}
+		System.out.println("]");
+	}
+	private void print2ddoubleDouble(String comment, double[][][] in) {
+		System.out.println("[" + comment);
+		for(double[][] row : in) {
+			System.out.print("[ ");
+			for(double[] col : row) {
+				System.out.print("[");
+				for(double i : col) 
+					System.out.format(" %.6f ", i);
+				System.out.print("]");
 			}
 			System.out.println(" ]");
 		}
@@ -208,6 +248,20 @@ public class Proj1 {
 		System.out.println("[" + comment);
 		for(int[] row : in) {
 			System.out.println(Arrays.toString(row));
+		}
+		System.out.println("]");
+	}
+	private void print2dInt2(String comment, int[][][] in) {
+		System.out.println("[" + comment);
+		for(int[][] row : in) {
+			System.out.print("[ ");
+			for(int[] col : row) {
+				System.out.print("[");
+				for(int i : col) 
+					System.out.format(" %d ", i);
+				System.out.print("]");
+			}
+			System.out.println(" ]");
 		}
 		System.out.println("]");
 	}	
