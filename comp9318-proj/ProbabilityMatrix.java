@@ -34,7 +34,7 @@ public abstract class ProbabilityMatrix implements MatrixFromFile {
 	 * Constructor.
 	 * 
 	 * @param filename	File with the transition tallies.
-	 * @param y			The height of the transition matrix. This is used by the emission matrix as its dependant on the number of states.
+	 * @param y			The height of the transition matrix. This is used by the emission matrix as its dependent on the number of states.
 	 * 
 	 * @throws IOException 
 	 * @throws FileNotFoundException 

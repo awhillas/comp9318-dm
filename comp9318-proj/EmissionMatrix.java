@@ -19,10 +19,10 @@ public class EmissionMatrix extends ProbabilityMatrix {
 	 * @throws FileNotFoundException
 	 * @throws IOException
 	 */
-	public EmissionMatrix(String filename, TransitionMatrix T)
+	public EmissionMatrix(String filename, TransitionMatrix Trans)
 			throws FileNotFoundException, IOException {
 		super();
-		A = T;
+		A = Trans;
 		parse(filename);
 		rowStochastic();
 	}
@@ -48,7 +48,7 @@ public class EmissionMatrix extends ProbabilityMatrix {
 	 */
 	@Override
 	public void rowStochastic() {
-		for(int j = 0; j < N; j++) {
+		for(int j = 0; j < getHeight(); j++) {
 			int sum = 0;
 			for (int i = 0; i < T[j].length; i++)
 				sum += T[j][i];
@@ -69,11 +69,11 @@ public class EmissionMatrix extends ProbabilityMatrix {
 
 	@Override
 	public int getWidth() {
-		return N + 1;
+		return N + 1;	// Number of symbols
 	}
 
 	@Override
 	public int getHeight() {
-		return A.N;
+		return A.N;	// number of states
 	}
 }
