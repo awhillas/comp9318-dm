@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.TreeSet;
 
 public class Proj1 {
 
@@ -25,19 +26,13 @@ public class Proj1 {
 	private EmissionMatrix  B;
 	
 	/**
-	 * 
-	 * @param states_file
-	 * @param symbol_file
-	 * @param query_file
-	 * @param k
-	 * @throws FileNotFoundException
-	 * @throws IOException
+	 * HMM
 	 */
 	public Proj1(String states_file, String symbol_file, String query_file, int k) throws FileNotFoundException, IOException {
 		A = new TransitionMatrix(states_file);
 		B = new EmissionMatrix(symbol_file, A);
-//		A.show();
-//		B.show();
+//		A.show();	// debug
+//		B.show();	// debug
 		processQueries(query_file, k);
 	}
 		
@@ -45,7 +40,7 @@ public class Proj1 {
 		String line;
 		BufferedReader br = new BufferedReader(new FileReader(query_filename));
 		while ((line = br.readLine()) != null) {
-			System.out.println(line);
+//			System.out.println(line); // debug
 			this.query(B.queryToIndex(line), k);
 		}
 		br.close();
@@ -57,8 +52,8 @@ public class Proj1 {
 		
 		viterbi_procedural(O, values, paths);
 		
-		print2ddoubleDouble("max_val", values);
-		print2dInt2("arg_max", paths);
+//		print2ddoubleDouble("max_val", values);	// debug
+//		print2dInt2("arg_max", paths);	// debug
 
 		// get solutions
 		List<ArrayList<ResultPair>> solutions = new ArrayList<ArrayList<ResultPair>>(A.N * A.N * O.length);
@@ -66,28 +61,45 @@ public class Proj1 {
 		
 		getTop(k, solutions);
 	}
-
 	
-	private Map<String, Double> getTop(int k, List<ArrayList<ResultPair>> solutions) {
-		LinkedHashMap top = new LinkedHashMap<String, Double>();
-		// Create hash map
+	/**
+	 * 
+	 * @param O			Array of index of emission symbols
+	 * @param values	The dynamic programming log probability array. unlike the 
+	 * 					original Viterbi algo. This keeps all the values used in the calculations.
+	 * @param paths		Array of indexs so we can rebuild the paths used to get to the values in 
+	 * 					the 'values' array. @see tracePaths()
+	 */
+	private void viterbi_procedural(int[] O, double[][][] values, int[][][] paths) {
+		// Base case, t = 0
+		for(int  i = 0; i < A.N; i++)
+			for(int j = 0; j < A.N; j++)
+				values[0][i][j] = A.get(A.getBeginIndex(), i) + B.get(i, O[0]);
 		
-
-		// Sort the map
-		Collections.sort(top, new Comparator<Map.Entry<String, Double>>() {
-			public int compare(Map.Entry<String, Double> a, Map.Entry<String, Double> b) {
-				return a.getValue().compareTo(b.getValue());
+		for(int t = 1; t < O.length; t++) {
+			for(int i = 0; i < A.N; i++) {
+				double[] p = new double[A.N];
+				for(int j = 0; j < A.N; j++) {
+					//paths[t][i][j] = getMaxIndex(values[t-1][j]);
+					//values[t][i][j] = values[t-1][j][paths[t][i][j]] + A.get(j, i) + B.get(i, O[t]);
+					values[t][i][j] = A.get(j, i) + B.get(i, O[t]);
+					paths[t][i][j] = j;
+				}
 			}
-		});
-		Map<String, Double> sortedTop = new LinkedHashMap<String, Double>();
-		for (Map.Entry<String, Double> entry : top) {
-			sortedTop.put(entry.getKey(), entry.getValue());
 		}
-		// Take the top k
-		
-		return sortedTop;
+		// Add in the final transition to the artificial END state
+		int end_i = A.getEndIndex();
+		for (int i = 0; i < A.N; i++) {
+			int best_last_i = getMaxIndex(values[O.length - 1][i]);	// (index of) the best of each set in the last row
+			paths[O.length][end_i][i] = best_last_i;
+			//values[O.length][end_i][i] = values[O.length - 1][i][best_last_i] + A.get(best_last_i, end_i);
+			values[O.length][end_i][i] = A.get(best_last_i, end_i);
+		}		
 	}
 	
+	/**
+	 * Recursively rebuild the paths for each solution and store the results in the 'solutons' param.
+	 */
 	private void tracePaths(int row, int col, int[][][] paths, double[][][] values, 
 			ArrayList<ResultPair> currentPath, List<ArrayList<ResultPair>> solutons) {
 		if (row == 0) {
@@ -107,26 +119,48 @@ public class Proj1 {
 				tracePaths(row - 1, paths[row][col][i], paths, values, subpath, solutons);
 			}
 		}
-	}
-	
-	private void printSolution(List<Integer> solution, double logLikeleyhood) {
-		for(int i = 0; i < solution.size(); i++) {
-			System.out.format("%d,", solution.get(i));
-		}
-		System.out.format(" %f%n", logLikeleyhood);
-	}
+	}	
 
 	/**
-	 * Recursively trace back the though the arg_max using the max_vals to get the solution.
+	 * Get the top k unique solutions.
 	 */
-	private void trace(int row, int col, int[][] paths, List<Integer> solution) {
-		if (row != 0) {
-			trace(row - 1, paths[row][col], paths, solution);
-			solution.add(paths[row][col]);
+	private void getTop(int k, List<ArrayList<ResultPair>> solutions) {
+		// Use TreeSet to remove duplicates and sort by LogProb.
+		TreeSet<Solution> out = new TreeSet<Solution>(new Comparator<Solution>(){
+		    public int compare(Solution s1, Solution s2) {
+		    	// Sort by Log probability
+		        if (s1.getLogProb() > s2.getLogProb()) return -1;
+		        if (s1.getLogProb() < s2.getLogProb()) return 1;
+		        return s1.compareTo(s2);
+		    }
+		});
+		for (ArrayList<ResultPair> s : solutions) {
+			out.add(new Solution(s));
 		}
+		// Top k items
+		int i = 0;
+		for(Solution s : out) {
+			if (++i > k) break;
+			System.out.println(s);
+		}
+	}	
+	
+	/**
+	 * @param	in		input
+	 * @return	index 	to the max value in input
+	 */
+	private int getMaxIndex(double[] in) {
+		int max_i = 0;
+		for(int i = 0; i < in.length; i++) {
+			if (in[i] > in[max_i]) {
+				max_i = i;
+			}
+		}
+		return max_i;
 	}
 	
 	/**
+	 * Original Viterbi recursive version before Top-k was required.
 	 * Note: notation taken from [Stamp, 2012]
 	 * @param t		observation index.
 	 * @param i		the end state we are finding the max value for.
@@ -155,53 +189,21 @@ public class Proj1 {
 		return max_val[t][i];	// return best value
 	}
 	
-	private void viterbi_procedural(int[] O, double[][][] values, int[][][] paths) {
-		// Base case, t = 0
-		for(int  i = 0; i < A.N; i++)
-			for(int j = 0; j < A.N; j++)
-				values[0][i][j] = A.get(A.getBeginIndex(), i) + B.get(i, O[0]);
-		
-		for(int t = 1; t < O.length; t++) {
-			for(int i = 0; i < A.N; i++) {
-				double[] p = new double[A.N];
-				for(int j = 0; j < A.N; j++) {
-					//paths[t][i][j] = getMaxIndex(values[t-1][j]);
-					//values[t][i][j] = values[t-1][j][paths[t][i][j]] + A.get(j, i) + B.get(i, O[t]);
-					values[t][i][j] = A.get(j, i) + B.get(i, O[t]);
-					paths[t][i][j] = j;
-				}
-			}
-		}
-		// Add in the final transition to the artificial END state
-		int end_i = A.getEndIndex();	// index to the END state
-		for (int i = 0; i < A.N; i++) {
-			int best_last_i = getMaxIndex(values[O.length - 1][i]);	// (index of) the best of each set in the last row
-			paths[O.length][end_i][i] = best_last_i;
-			//values[O.length][end_i][i] = values[O.length - 1][i][best_last_i] + A.get(best_last_i, end_i);
-			values[O.length][end_i][i] = A.get(best_last_i, end_i);
-		}		
-	}
-	
-	private void getTop(int k) {
-
+	@SuppressWarnings("unused")
+	private double getMax(double[] in) {
+		return in[getMaxIndex(in)];
 	}
 	
 	/**
-	 * @param	in		input
-	 * @return	index 	to the max value in input
+	 * Recursively trace back the though the arg_max using the max_vals to get the solution.
+	 * This was used on the original version.
 	 */
-	private int getMaxIndex(double[] in) {
-		int max_i = 0;
-		for(int i = 0; i < in.length; i++) {
-			if (in[i] > in[max_i]) {
-				max_i = i;
-			}
+	@SuppressWarnings("unused")
+	private void trace(int row, int col, int[][] paths, List<Integer> solution) {
+		if (row != 0) {
+			trace(row - 1, paths[row][col], paths, solution);
+			solution.add(paths[row][col]);
 		}
-		return max_i;
-	}
-	
-	private double getMax(double[] in) {
-		return in[getMaxIndex(in)];
 	}
 	
 	/**
@@ -231,17 +233,7 @@ public class Proj1 {
 	}
 	
 	/* * * * * * * DEBUG functions * * * * * * * */
-	private void print2ddouble(String comment, double[][] in) {
-		System.out.println("[" + comment);
-		for(double[] row : in) {
-			System.out.print("[");
-			for(double col : row) {
-				System.out.format(" %.6f ", col);
-			}
-			System.out.println("]");
-		}
-		System.out.println("]");
-	}
+	
 	private void print2ddoubleDouble(String comment, double[][][] in) {
 		System.out.println("[" + comment);
 		for(double[][] row : in) {
@@ -253,13 +245,6 @@ public class Proj1 {
 				System.out.print("]");
 			}
 			System.out.println(" ]");
-		}
-		System.out.println("]");
-	}
-	private void print2dint(String comment, int[][] in) {
-		System.out.println("[" + comment);
-		for(int[] row : in) {
-			System.out.println(Arrays.toString(row));
 		}
 		System.out.println("]");
 	}
