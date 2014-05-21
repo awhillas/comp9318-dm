@@ -3,15 +3,9 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Hashtable;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 import java.util.TreeSet;
 
 public class Proj1 {
@@ -47,19 +41,45 @@ public class Proj1 {
 	}
 	
 	private void query(int[] O, int k) {
-		double[][][] values = new double[O.length + 1][A.N][A.N];
-		int[][][] paths = new int[O.length + 1][A.N][A.N];
 		
-		viterbi_procedural(O, values, paths);
-		
+		// Here i use the standard Viterbi for k = 1 
+		// Mainly to show i can and that I didn't ass-up this assignment completely.
+		if(k == 1) {
+			
+			double[][] max_val = new double[O.length + 1][A.N];
+			int[][] arg_max = new int[O.length + 1][A.N];
+			
+			for (int i = 0; i < A.N; i++)
+				viterbi_recursive(O.length - 1, i, O, max_val, arg_max);
+			
+			// Add in the final transition to the artificial END state
+			int best_last = getMaxIndex(max_val[O.length - 1]);
+			int end_i = A.getEndIndex();
+			arg_max[O.length][end_i] = best_last;
+			max_val[O.length][end_i] = max_val[O.length - 1][best_last] + A.get(best_last, end_i);
+			
+			List<Integer> solution = new ArrayList<Integer>();
+			solution.add(A.getBeginIndex());
+			trace(O.length, end_i, arg_max, solution);
+			// Print solution
+			for(int i = 0; i < solution.size(); i++)
+				System.out.format("%d,", solution.get(i));
+			System.out.format("%d %.10f%n", A.getEndIndex(), max_val[O.length][end_i]);
+		}
+		else {
+			// Here is my attempt at the top-k version
+			double[][][] values = new double[O.length + 1][A.N][A.N];
+			int[][][] paths = new int[O.length + 1][A.N][A.N];
+			viterbi_procedural(O, values, paths);
+			
+			// get solutions
+			List<ArrayList<ResultPair>> solutions = new ArrayList<ArrayList<ResultPair>>(A.N * A.N * O.length);
+			tracePaths(O.length, A.N-1, paths, values, new ArrayList<ResultPair>(), solutions);
+			
+			getTop(k, solutions);
+		}
 //		print2ddoubleDouble("max_val", values);	// debug
 //		print2dInt2("arg_max", paths);	// debug
-
-		// get solutions
-		List<ArrayList<ResultPair>> solutions = new ArrayList<ArrayList<ResultPair>>(A.N * A.N * O.length);
-		tracePaths(O.length, A.N-1, paths, values, new ArrayList<ResultPair>(), solutions);
-		
-		getTop(k, solutions);
 	}
 	
 	/**
@@ -78,10 +98,9 @@ public class Proj1 {
 		
 		for(int t = 1; t < O.length; t++) {
 			for(int i = 0; i < A.N; i++) {
-				double[] p = new double[A.N];
 				for(int j = 0; j < A.N; j++) {
 					//paths[t][i][j] = getMaxIndex(values[t-1][j]);
-					//values[t][i][j] = values[t-1][j][paths[t][i][j]] + A.get(j, i) + B.get(i, O[t]);
+					//values[t][i][j] = values[t-1][j][paths[t][i][j]] + A.get(j, i) + B.get(i, O[t]);	// normal
 					values[t][i][j] = A.get(j, i) + B.get(i, O[t]);
 					paths[t][i][j] = j;
 				}
@@ -92,7 +111,7 @@ public class Proj1 {
 		for (int i = 0; i < A.N; i++) {
 			int best_last_i = getMaxIndex(values[O.length - 1][i]);	// (index of) the best of each set in the last row
 			paths[O.length][end_i][i] = best_last_i;
-			//values[O.length][end_i][i] = values[O.length - 1][i][best_last_i] + A.get(best_last_i, end_i);
+			//values[O.length][end_i][i] = values[O.length - 1][i][best_last_i] + A.get(best_last_i, end_i);	// normal
 			values[O.length][end_i][i] = A.get(best_last_i, end_i);
 		}		
 	}
@@ -119,7 +138,7 @@ public class Proj1 {
 				tracePaths(row - 1, paths[row][col][i], paths, values, subpath, solutons);
 			}
 		}
-	}	
+	}
 
 	/**
 	 * Get the top k unique solutions.
@@ -127,12 +146,14 @@ public class Proj1 {
 	private void getTop(int k, List<ArrayList<ResultPair>> solutions) {
 		// Use TreeSet to remove duplicates and sort by LogProb.
 		TreeSet<Solution> out = new TreeSet<Solution>(new Comparator<Solution>(){
-		    public int compare(Solution s1, Solution s2) {
-		    	// Sort by Log probability
-		        if (s1.getLogProb() > s2.getLogProb()) return -1;
-		        if (s1.getLogProb() < s2.getLogProb()) return 1;
-		        return s1.compareTo(s2);
-		    }
+			public int compare(Solution s1, Solution s2) {
+				// Sort by Log probability
+				if (s1.getLogProb() > s2.getLogProb())
+					return -1;
+				if (s1.getLogProb() < s2.getLogProb())
+					return 1;
+				return s1.compareTo(s2);
+			}
 		});
 		for (ArrayList<ResultPair> s : solutions) {
 			out.add(new Solution(s));
@@ -168,7 +189,6 @@ public class Proj1 {
 	 * @param max_val	book keeping for maximum states sequence values.
 	 * @return
 	 */
-	@SuppressWarnings("unused")
 	private double viterbi_recursive(int t, int i, int[] O, double[][] max_val, int[][] arg_max) {
 		if (max_val[t][i] != 0)
 			return max_val[t][i];
